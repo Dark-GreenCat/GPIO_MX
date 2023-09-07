@@ -49,6 +49,38 @@
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 /* USER CODE BEGIN PFP */
+#define BIT(x) ((uint32_t) 1U << (x))
+#define REG(x) ((volatile uint32_t *) (x))
+
+inline void clear_bit(volatile uint32_t *REG, uint8_t bit_index) {
+  *REG &= ~BIT(bit_index);
+}
+
+inline void set_bit(volatile uint32_t *REG, uint8_t bit_index) {
+  *REG |= BIT(bit_index);
+} 
+
+typedef struct {
+  uint32_t CRL;
+  uint32_t CRH;
+  uint32_t IDR;
+  uint32_t ODR;
+  uint32_t BSRR;
+  uint32_t BRR;
+  uint32_t LCKR;
+} gpio_config_t;
+
+#define USER_GPIOA_BASE 0x40010800
+#define USER_LED_GPIO_PORT (gpio_config_t *) USER_GPIOA_BASE
+#define USER_LED_GPIO_PIN 6
+typedef enum { LOW, HIGH } gpio_state_t;
+
+inline void gpio_write(gpio_config_t *GPIOx, uint16_t GPIO_PIN, gpio_state_t PIN_STATE) {
+  clear_bit(&GPIOx->BSRR, GPIO_PIN);
+
+  if (PIN_STATE == HIGH) set_bit(&GPIOx->BSRR, GPIO_PIN);
+  else set_bit(&GPIOx->BSRR, 16u + GPIO_PIN);
+}
 
 /* USER CODE END PFP */
 
@@ -96,7 +128,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    HAL_GPIO_TogglePin(LED_MX_GPIO_Port, LED_MX_Pin);
+    gpio_write(USER_LED_GPIO_PORT, USER_LED_GPIO_PIN, HIGH);
+    HAL_Delay(500);
+    gpio_write(USER_LED_GPIO_PORT, USER_LED_GPIO_PIN, LOW);
     HAL_Delay(500);
   }
   /* USER CODE END 3 */
