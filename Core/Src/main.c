@@ -73,6 +73,8 @@ typedef struct {
 #define USER_GPIOA_BASE 0x40010800
 #define USER_LED_GPIO_PORT (gpio_config_t *) USER_GPIOA_BASE
 #define USER_LED_GPIO_PIN 6
+#define USER_BUTTON_GPIO_PORT (gpio_config_t *) USER_GPIOA_BASE
+#define USER_BUTTON_GPIO_PIN 1
 typedef enum { LOW, HIGH } gpio_state_t;
 
 inline void gpio_write(gpio_config_t *GPIOx, uint16_t GPIO_PIN, gpio_state_t PIN_STATE) {
@@ -82,6 +84,9 @@ inline void gpio_write(gpio_config_t *GPIOx, uint16_t GPIO_PIN, gpio_state_t PIN
   else set_bit(&GPIOx->BSRR, 16u + GPIO_PIN);
 }
 
+inline uint8_t gpio_read(gpio_config_t *GPIOx, uint16_t GPIO_PIN) {
+  return (GPIOx->IDR & BIT(GPIO_PIN)) ? HIGH : LOW;
+}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -128,10 +133,8 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    gpio_write(USER_LED_GPIO_PORT, USER_LED_GPIO_PIN, HIGH);
-    HAL_Delay(500);
-    gpio_write(USER_LED_GPIO_PORT, USER_LED_GPIO_PIN, LOW);
-    HAL_Delay(500);
+    uint8_t button_state = gpio_read(USER_BUTTON_GPIO_PORT, USER_BUTTON_GPIO_PIN);
+    gpio_write(USER_LED_GPIO_PORT, USER_LED_GPIO_PIN, button_state);
   }
   /* USER CODE END 3 */
 }
