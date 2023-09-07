@@ -81,12 +81,87 @@ inline void gpio_write(gpio_config_t *GPIOx, uint16_t GPIO_PIN, gpio_state_t PIN
   clear_bit(&GPIOx->BSRR, GPIO_PIN);
 
   if (PIN_STATE == HIGH) set_bit(&GPIOx->BSRR, GPIO_PIN);
-  else set_bit(&GPIOx->BSRR, 16u + GPIO_PIN);
+  else set_bit(&GPIOx->BRR, GPIO_PIN);
 }
 
 inline uint8_t gpio_read(gpio_config_t *GPIOx, uint16_t GPIO_PIN) {
   return (GPIOx->IDR & BIT(GPIO_PIN)) ? HIGH : LOW;
 }
+
+/* io_mode */
+enum { MODE_INPUT, MODE_OUTPUT_LOW_SPEED, MODE_OUTPUT_MEDIUM_SPEED, MODE_OUTPUT_HIGH_SPEED };
+/* io_config */
+enum { CONFIG_INPUT_ANALOG, CONFIG_INPUT_FLOATING, CONFIG_INPUT_PULLUP, CONFIG_INPUT_PULLDOWN };
+enum { CONFIG_OUTPUT_GP_PUSHPULL, CONFIG_OUTPUT_GP_OPENDRAIN, CONFIG_OUTPUT_AF_PUSHPULL, CONFIG_OUTPUT_AF_OPENDRAIN };
+
+typedef struct {
+  gpio_config_t *gpio_port;
+  uint16_t gpio_pin;
+  uint32_t io_mode;
+  uint32_t io_config;
+} gpio_init_t;
+
+void gpio_init_pin(gpio_init_t *GPIO_INIT) {
+  #define CLEAR_CNF_MODE(REG, x) { clear_bit((REG), (x)); clear_bit((REG), (x) + 1); }
+  volatile uint32_t *config_reg = (GPIO_INIT->gpio_pin <= 7)? &GPIO_INIT->gpio_port->CRL : &GPIO_INIT->gpio_port->CRH;
+
+  /* Config io_mode */
+  CLEAR_CNF_MODE(config_reg, 4 * (GPIO_INIT->gpio_pin % 8))
+  *config_reg |= ((uint32_t) GPIO_INIT->io_mode) << (4 * (GPIO_INIT->gpio_pin % 8));
+
+  /* Config io_config */
+  if(GPIO_INIT->io_mode != MODE_INPUT) {
+    CLEAR_CNF_MODE(config_reg, 4 * (GPIO_INIT->gpio_pin % 8) + 2)
+    *config_reg |= ((uint32_t) GPIO_INIT->io_config) << (4 * (GPIO_INIT->gpio_pin % 8) + 2);
+  }
+  else {
+    if(GPIO_INIT->io_config != CONFIG_INPUT_PULLDOWN && GPIO_INIT->io_config != CONFIG_INPUT_PULLUP) {
+      CLEAR_CNF_MODE(config_reg, 4 * (GPIO_INIT->gpio_pin % 8) + 2)
+      *config_reg |= ((uint32_t) GPIO_INIT->io_config) << (4 * (GPIO_INIT->gpio_pin % 8) + 2);
+    }
+    else {
+      CLEAR_CNF_MODE(config_reg, 4 * (GPIO_INIT->gpio_pin % 8) + 2)
+      *config_reg |= ((uint32_t) 0b10) << (4 * (GPIO_INIT->gpio_pin % 8) + 2);
+      if(GPIO_INIT->io_config == CONFIG_INPUT_PULLDOWN) {
+        set_bit(&GPIO_INIT->gpio_port->BRR, GPIO_INIT->gpio_pin);
+      }
+      else {
+        set_bit(&GPIO_INIT->gpio_port->BSRR, GPIO_INIT->gpio_pin);
+      }
+  }
+  }
+}
+
+#define USER_RCC_BASE 0x40021000
+#define USER_RCC_APB2ENR_OFFSET 0x18
+
+inline void enable_RCC_GPIOA_clock() {
+  set_bit(REG(USER_RCC_BASE + USER_RCC_APB2ENR_OFFSET), 2);
+}
+
+void gpio_init() {
+  /* GPIO Ports Clock Enable */
+  enable_RCC_GPIOA_clock();
+
+  gpio_write(USER_LED_GPIO_PORT, USER_LED_GPIO_PIN, LOW);
+
+  gpio_init_t GPIO_INIT;
+
+  /* Initialize USER_LED */
+  GPIO_INIT.gpio_port = USER_LED_GPIO_PORT;
+  GPIO_INIT.gpio_pin = USER_LED_GPIO_PIN;
+  GPIO_INIT.io_mode = MODE_OUTPUT_HIGH_SPEED;
+  GPIO_INIT.io_config = CONFIG_OUTPUT_GP_PUSHPULL;
+  gpio_init_pin(&GPIO_INIT);
+
+  /* Initialize USER_BUTTON */
+  GPIO_INIT.gpio_port = USER_BUTTON_GPIO_PORT;
+  GPIO_INIT.gpio_pin = USER_BUTTON_GPIO_PIN;
+  GPIO_INIT.io_mode = MODE_INPUT;
+  GPIO_INIT.io_config = CONFIG_INPUT_PULLUP;
+  gpio_init_pin(&GPIO_INIT);
+}
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -121,7 +196,8 @@ int main(void)
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
-  MX_GPIO_Init();
+  //MX_GPIO_Init();
+   gpio_init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -134,8 +210,13 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     uint8_t button_state = gpio_read(USER_BUTTON_GPIO_PORT, USER_BUTTON_GPIO_PIN);
-    gpio_write(USER_LED_GPIO_PORT, USER_LED_GPIO_PIN, button_state);
-  }
+    gpio_write(USER_LED_GPIO_PORT, USER_LED_GPIO_PIN, !button_state);
+
+    // gpio_write(USER_LED_GPIO_PORT, USER_LED_GPIO_PIN, HIGH);
+    // HAL_Delay(500);
+    // gpio_write(USER_LED_GPIO_PORT, USER_LED_GPIO_PIN, LOW);
+    // HAL_Delay(500);
+    }
   /* USER CODE END 3 */
 }
 
@@ -192,18 +273,19 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LED_MX_GPIO_Port, LED_MX_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : BUTTON_MX_Pin */
-  GPIO_InitStruct.Pin = BUTTON_MX_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(BUTTON_MX_GPIO_Port, &GPIO_InitStruct);
+  gpio_init();
+  // /*Configure GPIO pin : BUTTON_MX_Pin */
+  // GPIO_InitStruct.Pin = BUTTON_MX_Pin;
+  // GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  // GPIO_InitStruct.Pull = GPIO_PULLUP;
+  // HAL_GPIO_Init(BUTTON_MX_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : LED_MX_Pin */
-  GPIO_InitStruct.Pin = LED_MX_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LED_MX_GPIO_Port, &GPIO_InitStruct);
+  // /*Configure GPIO pin : LED_MX_Pin */
+  // GPIO_InitStruct.Pin = LED_MX_Pin;
+  // GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  // GPIO_InitStruct.Pull = GPIO_NOPULL;
+  // GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  // HAL_GPIO_Init(LED_MX_GPIO_Port, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
